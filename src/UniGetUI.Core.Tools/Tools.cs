@@ -975,7 +975,7 @@ namespace UniGetUI.Core.Tools
 
         /// <summary>
         /// Fetches the download counts for packages from the statistics server.
-        /// Returns a dictionary mapping "{managerId}\\{packageId}" to a download count.
+        /// Returns a dictionary mapping "{managerName}\\{packageId}" to a download count.
         /// </summary>
         public static async Task<Dictionary<string, long>> FetchPackageRankingsAsync()
         {
@@ -997,9 +997,9 @@ namespace UniGetUI.Core.Tools
                 }
 
                 string json = await response.Content.ReadAsStringAsync();
-                var raw = JsonSerializer.Deserialize<Dictionary<string, long>>(
+                var rankings = JsonSerializer.Deserialize<Dictionary<string, long>>(
                     json, SerializationHelpers.DefaultOptions);
-                return raw ?? [];
+                return rankings ?? [];
             }
             catch (Exception ex)
             {

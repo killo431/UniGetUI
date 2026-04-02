@@ -55,20 +55,20 @@ public sealed partial class PackageRanking : UserControl
 
         try
         {
-            var rankings = await CoreTools.FetchPackageRankingsAsync();
+            var downloadsByKey = await CoreTools.FetchPackageRankingsAsync();
 
-            foreach (var kv in rankings)
+            foreach (var kv in downloadsByKey)
             {
-                string[] parts = kv.Key.Split('\\', 2);
-                if (parts.Length == 2)
-                    PackageCacher.SetDownloadCount(parts[0], parts[1], kv.Value);
+                string[] keyParts = kv.Key.Split('\\', 2);
+                if (keyParts.Length == 2)
+                    PackageCacher.SetDownloadCount(keyParts[0], keyParts[1], kv.Value);
             }
 
             string? filterManagerName = ManagerFilter.SelectedIndex > 0
                 ? ManagerFilter.SelectedItem as string
                 : null;
 
-            var sorted = rankings
+            var sorted = downloadsByKey
                 .Where(kv =>
                     filterManagerName is null
                     || kv.Key.StartsWith(filterManagerName + "\\", StringComparison.Ordinal))
@@ -101,18 +101,18 @@ public sealed partial class PackageRanking : UserControl
 
     private static UIElement BuildPackageRow(int rank, string key, long downloads)
     {
-        string[] parts = key.Split('\\', 2);
-        string managerName = parts.Length > 1 ? parts[0] : "?";
-        string packageId = parts.Length > 1 ? parts[1] : key;
+        string[] keyComponents = key.Split('\\', 2);
+        string managerName = keyComponents.Length > 1 ? keyComponents[0] : "?";
+        string packageId = keyComponents.Length > 1 ? keyComponents[1] : key;
 
-        Grid row = new()
+        Grid packageRowGrid = new()
         {
             Padding = new Thickness(8, 6, 8, 6),
             CornerRadius = new CornerRadius(4),
         };
-        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(36) });
-        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        packageRowGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(36) });
+        packageRowGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        packageRowGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
         TextBlock rankText = new()
         {
@@ -123,25 +123,25 @@ public sealed partial class PackageRanking : UserControl
             VerticalAlignment = VerticalAlignment.Center,
         };
         Grid.SetColumn(rankText, 0);
-        row.Children.Add(rankText);
+        packageRowGrid.Children.Add(rankText);
 
-        StackPanel info = new() { VerticalAlignment = VerticalAlignment.Center };
-        info.Children.Add(new TextBlock
+        StackPanel packageInfoPanel = new() { VerticalAlignment = VerticalAlignment.Center };
+        packageInfoPanel.Children.Add(new TextBlock
         {
             Text = CoreTools.FormatAsName(packageId),
             FontSize = 13,
             FontWeight = FontWeights.SemiBold,
             TextTrimming = TextTrimming.CharacterEllipsis,
         });
-        info.Children.Add(new TextBlock
+        packageInfoPanel.Children.Add(new TextBlock
         {
             Text = $"{packageId}  ·  {managerName}",
             FontSize = 11,
             Opacity = 0.6,
             TextTrimming = TextTrimming.CharacterEllipsis,
         });
-        Grid.SetColumn(info, 1);
-        row.Children.Add(info);
+        Grid.SetColumn(packageInfoPanel, 1);
+        packageRowGrid.Children.Add(packageInfoPanel);
 
         TextBlock downloadsBadge = new()
         {
@@ -152,8 +152,8 @@ public sealed partial class PackageRanking : UserControl
             Margin = new Thickness(8, 0, 0, 0),
         };
         Grid.SetColumn(downloadsBadge, 2);
-        row.Children.Add(downloadsBadge);
+        packageRowGrid.Children.Add(downloadsBadge);
 
-        return row;
+        return packageRowGrid;
     }
 }
