@@ -66,6 +66,9 @@ namespace UniGetUI.Interface.SoftwarePages
                     Event_SearchPackages(s, e);
                 }
             };
+
+            ShowPopularPackagesButton.Visibility = Visibility.Visible;
+            ShowPopularPackagesButton.Click += (_, _) => _ = DialogHelper.ShowPackageRankings();
         }
 
         public override void SearchBox_QuerySubmitted(

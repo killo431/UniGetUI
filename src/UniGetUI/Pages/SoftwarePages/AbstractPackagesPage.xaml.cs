@@ -396,6 +396,8 @@ namespace UniGetUI.Interface
                 BackgroundText.Visibility = Visibility.Collapsed;
             }
 
+            ShowPopularPackagesButton.Visibility = Visibility.Collapsed;
+
             _searchPlaceholder = CoreTools.Translate("Search for packages");
             MegaQueryBlock.PlaceholderText = _searchPlaceholder;
             InstantSearchCheckbox.IsChecked = !Settings.GetDictionaryItem<string, bool>(

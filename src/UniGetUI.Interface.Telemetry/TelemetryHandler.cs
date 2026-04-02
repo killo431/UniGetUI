@@ -165,6 +165,8 @@ public static class TelemetryHandler
     public static void SharedPackage(IPackage package, string eventSource) =>
         PackageEndpoint(package, "share", eventSource: eventSource);
 
+    public static void ViewPackageRankings() => _ = Task.Run(() => BundlesEndpoint("rankings", "view"));
+
     private static async void PackageEndpoint(
         IPackage package,
         string endpoint,

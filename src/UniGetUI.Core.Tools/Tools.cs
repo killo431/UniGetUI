@@ -5,6 +5,7 @@ using System.Net.NetworkInformation;
 using System.Security.Cryptography;
 using System.Security.Principal;
 using System.Text;
+using System.Text.Json;
 using UniGetUI.Core.Classes;
 using UniGetUI.Core.Data;
 using UniGetUI.Core.Language;
@@ -970,6 +971,56 @@ namespace UniGetUI.Core.Tools
             }
 
             return pathEntry.Length == 6 || pathEntry[6] == '/';
+        }
+
+        /// <summary>
+        /// Fetches the download counts for packages from the statistics server.
+        /// Returns a dictionary mapping "{managerId}\\{packageId}" to a download count.
+        /// </summary>
+        public static async Task<Dictionary<string, long>> FetchPackageRankingsAsync()
+        {
+#if DEBUG
+            const string HOST = "http://localhost:3000";
+#else
+            const string HOST = "https://marticliment.com/unigetui/statistics";
+#endif
+            try
+            {
+                await WaitForInternetConnection();
+                using HttpClient client = new(GenericHttpClientParameters);
+                client.DefaultRequestHeaders.UserAgent.ParseAdd(CoreData.UserAgentString);
+                HttpResponseMessage response = await client.GetAsync($"{HOST}/rankings");
+                if (!response.IsSuccessStatusCode)
+                {
+                    Logger.Warn($"[Rankings] Failed to fetch rankings, status={response.StatusCode}");
+                    return [];
+                }
+
+                string json = await response.Content.ReadAsStringAsync();
+                var raw = JsonSerializer.Deserialize<Dictionary<string, long>>(
+                    json, SerializationHelpers.DefaultOptions);
+                return raw ?? [];
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn("[Rankings] Failed to fetch package rankings");
+                Logger.Warn(ex);
+                return [];
+            }
+        }
+
+        /// <summary>
+        /// Formats a download count as a human-readable abbreviated string (e.g., 1.2M, 34.5K).
+        /// </summary>
+        public static string FormatDownloadCount(long count)
+        {
+            if (count < 0)
+                return "—";
+            if (count >= 1_000_000)
+                return $"{count / 1_000_000.0:F1}M";
+            if (count >= 1_000)
+                return $"{count / 1_000.0:F1}K";
+            return count.ToString();
         }
     }
 }
