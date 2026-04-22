@@ -104,6 +104,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Validate GitHub OAuth secrets
+        if: ${{ fromJSON(needs.preflight.outputs.dry-run) == false }}
         shell: pwsh
         run: |
           if ([string]::IsNullOrWhiteSpace($env:UNIGETUI_GITHUB_CLIENT_ID)) {
