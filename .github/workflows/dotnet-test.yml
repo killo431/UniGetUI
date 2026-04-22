@@ -32,7 +32,7 @@ on:
 
 jobs:
   test-codebase:
-    runs-on: windows-latest
+    runs-on: RANDAL-MAIN
     env:
       NUGET_PACKAGES: ${{ github.workspace }}\.nuget\packages
 

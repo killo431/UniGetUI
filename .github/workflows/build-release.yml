@@ -83,7 +83,7 @@ jobs:
 
   build:
     name: Build & Sign (${{ matrix.platform }})
-    runs-on: windows-latest
+    runs-on: RANDAL-MAIN
     needs: [preflight]
     environment: ${{ needs.preflight.outputs.package-env }}
     permissions:
