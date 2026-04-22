@@ -1,8 +1,10 @@
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Input;
 using Avalonia.Input.Platform;
+using Avalonia.Threading;
 using UniGetUI.Avalonia.ViewModels.Pages;
 using UniGetUI.Avalonia.Views.Controls;
 using UniGetUI.Core.Tools;
@@ -32,22 +34,6 @@ public abstract partial class AbstractPackagesPage : UserControl,
             if (GetMainWindow() is { } win)
                 await new ManageIgnoredUpdatesWindow().ShowDialog(win);
         };
-        ViewModel.SharePackageRequested += async (pkgName, url) =>
-        {
-            if (GetMainWindow() is not { } win) return;
-            if (url is null)
-            {
-                await ViewModel.ShowInfoDialog(win,
-                    CoreTools.Translate("Nothing to share"),
-                    CoreTools.Translate("Please select a package first."));
-                return;
-            }
-            var clipboard = TopLevel.GetTopLevel(this)?.Clipboard;
-            if (clipboard is not null) await clipboard.SetTextAsync(url);
-            await ViewModel.ShowInfoDialog(win,
-                CoreTools.Translate("Share link copied"),
-                CoreTools.Translate("The share link for {0} has been copied to the clipboard.", pkgName ?? ""));
-        };
 
         // "New version" sort option is only relevant on the updates page
         OrderByNewVersion_Menu.IsVisible = ViewModel.RoleIsUpdateLike;
@@ -58,8 +44,15 @@ public abstract partial class AbstractPackagesPage : UserControl,
         {
             if (args.PropertyName is nameof(PackagesPageViewModel.SortFieldIndex)
                                   or nameof(PackagesPageViewModel.SortAscending))
+            {
                 UpdateSortMenuChecks();
+                SyncOrderByButtonName();
+            }
+            if (args.PropertyName is nameof(PackagesPageViewModel.IsFilterPaneOpen))
+                SyncFiltersButtonName();
         };
+        SyncFiltersButtonName();
+        SyncOrderByButtonName();
 
         // Build the toolbar now that both AXAML controls and the ViewModel are ready
         GenerateToolBar(ViewModel);
@@ -86,7 +79,17 @@ public abstract partial class AbstractPackagesPage : UserControl,
     // ─── UI-only: focus the package list ─────────────────────────────────────
     private void OnFocusListRequested() => PackageList.Focus();
 
-    public void FocusPackageList() => ViewModel.RequestFocusList();
+    public void FocusPackageList()
+    {
+        if (ViewModel.MegaQueryBoxEnabled)
+            Dispatcher.UIThread.Post(() =>
+            {
+                if (!ViewModel.MegaQueryVisible) return;
+                MegaQueryBlock.Focus();
+            }, DispatcherPriority.ApplicationIdle);
+        else
+            ViewModel.RequestFocusList();
+    }
     public void FilterPackages() => ViewModel.FilterPackages();
 
     // ─── Abstract: let concrete pages add toolbar items ───────────────────────
@@ -118,6 +121,7 @@ public abstract partial class AbstractPackagesPage : UserControl,
     {
         MainToolbarButtonIcon.Path = $"avares://UniGetUI.Avalonia/Assets/Symbols/{svgName}.svg";
         MainToolbarButtonText.Text = label;
+        AutomationProperties.SetName(MainToolbarButton, label);
         MainToolbarButton.Click += (_, _) => onClick();
     }
 
@@ -159,6 +163,24 @@ public abstract partial class AbstractPackagesPage : UserControl,
     private static TextBlock? Check(bool show) =>
         show ? new TextBlock { Text = "✓", FontSize = 12 } : null;
 
+    private void SyncFiltersButtonName()
+    {
+        bool open = ViewModel.IsFilterPaneOpen;
+        string state = open ? CoreTools.Translate("Open") : CoreTools.Translate("Closed");
+        string label = CoreTools.Translate("Filters");
+        AutomationProperties.SetName(ToggleFiltersButton, $"{label}, {state}");
+    }
+
+    private void SyncOrderByButtonName()
+    {
+        string direction = ViewModel.SortAscending
+            ? CoreTools.Translate("Ascending")
+            : CoreTools.Translate("Descending");
+        AutomationProperties.SetName(
+            OrderByButton,
+            CoreTools.Translate("{0}: {1}, {2}", CoreTools.Translate("Order by"), ViewModel.SortFieldName, direction));
+    }
+
     private void UpdateSortMenuChecks()
     {
         OrderByName_Menu.Icon = Check(ViewModel.SortFieldIndex == 0);
@@ -178,6 +200,7 @@ public abstract partial class AbstractPackagesPage : UserControl,
 
     public void ReloadTriggered() => ViewModel.TriggerReload();
     public void SelectAllTriggered() => ViewModel.ToggleSelectAll();
+    public void DetailsTriggered() { if (SelectedItem is { } pkg) _ = ShowDetailsForPackage(pkg); }
 
     // ─── IEnterLeaveListener ──────────────────────────────────────────────────
     public virtual void OnEnter() { }

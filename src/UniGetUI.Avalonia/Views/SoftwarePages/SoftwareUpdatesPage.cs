@@ -5,6 +5,7 @@ using UniGetUI.Avalonia.ViewModels.Pages;
 using UniGetUI.Avalonia.Views;
 using UniGetUI.Core.Logging;
 using UniGetUI.Core.Tools;
+using UniGetUI.Interface.Telemetry;
 using UniGetUI.PackageEngine.Classes.Manager.Classes;
 using UniGetUI.PackageEngine.Classes.Packages.Classes;
 using UniGetUI.PackageEngine.Enums;
@@ -83,8 +84,6 @@ public class SoftwareUpdatesPage : AbstractPackagesPage
         ViewModel.AddToolbarSeparator();
         ViewModel.AddToolbarButton("info_round", CoreTools.Translate("Package details"),
             () => _ = ShowDetailsForPackage(SelectedItem), showLabel: false);
-        ViewModel.AddToolbarButton("share", CoreTools.Translate("Share"),
-            () => vm.RequestShareCommand.Execute(SelectedItem), showLabel: false);
         ViewModel.AddToolbarSeparator();
         ViewModel.AddToolbarButton("pin", CoreTools.Translate("Ignore selected packages"), async () =>
         {
@@ -228,13 +227,6 @@ public class SoftwareUpdatesPage : AbstractPackagesPage
             menuPause.Items.Add(item);
         }
 
-        var menuShare = new MenuItem
-        {
-            Header = CoreTools.AutoTranslated("Share this package"),
-            Icon = LoadMenuIcon("share"),
-        };
-        menuShare.Click += (_, _) => ViewModel.RequestShareCommand.Execute(SelectedItem);
-
         var menuDetails = new MenuItem
         {
             Header = CoreTools.AutoTranslated("Package details"),
@@ -260,7 +252,6 @@ public class SoftwareUpdatesPage : AbstractPackagesPage
         menu.Items.Add(menuSkipVersion);
         menu.Items.Add(menuPause);
         menu.Items.Add(new Separator());
-        menu.Items.Add(menuShare);
         menu.Items.Add(menuDetails);
 
         return menu;
@@ -339,6 +330,8 @@ public class SoftwareUpdatesPage : AbstractPackagesPage
             var opts = await InstallOptionsFactory.LoadApplicableAsync(
                 pkg, elevated: elevated, interactive: interactive, no_integrity: no_integrity);
             var op = new UpdatePackageOperation(pkg, opts);
+            op.OperationSucceeded += (_, _) => TelemetryHandler.UpdatePackage(pkg, TEL_OP_RESULT.SUCCESS);
+            op.OperationFailed += (_, _) => TelemetryHandler.UpdatePackage(pkg, TEL_OP_RESULT.FAILED);
             AvaloniaOperationRegistry.Add(op);
             _ = op.MainThread();
         }
@@ -350,6 +343,8 @@ public class SoftwareUpdatesPage : AbstractPackagesPage
         {
             var opts = await InstallOptionsFactory.LoadApplicableAsync(pkg);
             var op = new UninstallPackageOperation(pkg, opts);
+            op.OperationSucceeded += (_, _) => TelemetryHandler.UninstallPackage(pkg, TEL_OP_RESULT.SUCCESS);
+            op.OperationFailed += (_, _) => TelemetryHandler.UninstallPackage(pkg, TEL_OP_RESULT.FAILED);
             AvaloniaOperationRegistry.Add(op);
             _ = op.MainThread();
         }
@@ -361,7 +356,11 @@ public class SoftwareUpdatesPage : AbstractPackagesPage
         var uninstallOpts = await InstallOptionsFactory.LoadApplicableAsync(package);
         var updateOpts = await InstallOptionsFactory.LoadApplicableAsync(package);
         var uninstallOp = new UninstallPackageOperation(package, uninstallOpts);
+        uninstallOp.OperationSucceeded += (_, _) => TelemetryHandler.UninstallPackage(package, TEL_OP_RESULT.SUCCESS);
+        uninstallOp.OperationFailed += (_, _) => TelemetryHandler.UninstallPackage(package, TEL_OP_RESULT.FAILED);
         var updateOp = new UpdatePackageOperation(package, updateOpts, req: uninstallOp);
+        updateOp.OperationSucceeded += (_, _) => TelemetryHandler.UpdatePackage(package, TEL_OP_RESULT.SUCCESS);
+        updateOp.OperationFailed += (_, _) => TelemetryHandler.UpdatePackage(package, TEL_OP_RESULT.FAILED);
         AvaloniaOperationRegistry.Add(uninstallOp);
         AvaloniaOperationRegistry.Add(updateOp);
         _ = uninstallOp.MainThread();

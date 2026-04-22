@@ -529,6 +529,10 @@ namespace UniGetUI.Interface
             LoadingProgressBar.Visibility = Visibility.Collapsed;
             // Required to update UI labels
             LastPackageLoadTime = DateTime.Now;
+            ToolTipService.SetToolTip(
+                ReloadButton,
+                CoreTools.Translate("Last checked: {0}", LastPackageLoadTime.ToString(CultureInfo.CurrentCulture))
+            );
             UpdatePackageCount();
             WhenPackagesLoaded(ReloadReason.External);
         }
@@ -1221,14 +1225,6 @@ namespace UniGetUI.Interface
             CoreTools.Launch(path);
         }
 
-        protected void SharePackage(IPackage? package)
-        {
-            if (package is null)
-                return;
-
-            DialogHelper.SharePackage(package);
-        }
-
         protected async Task ShowInstallationOptionsForPackage(IPackage? package)
         {
             if (package is null)
@@ -1296,7 +1292,14 @@ namespace UniGetUI.Interface
             }
         }
 
-        public void FocusPackageList() => CurrentPackageList.Focus(FocusState.Programmatic);
+        public void FocusPackageList()
+        {
+            if (MEGA_QUERY_BOX_ENABLED)
+                DispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low,
+                    () => MegaQueryBlock.Focus(FocusState.Programmatic));
+            else
+                CurrentPackageList.Focus(FocusState.Programmatic);
+        }
 
         public async Task ShowContextMenu(PackageWrapper wrapper)
         {

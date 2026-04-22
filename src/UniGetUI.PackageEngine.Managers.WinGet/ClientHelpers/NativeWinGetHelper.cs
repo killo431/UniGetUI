@@ -24,6 +24,7 @@ internal sealed class NativeWinGetHelper : IWinGetManagerHelper
 
     public string ActivationMode { get; private set; } = string.Empty;
     public string ActivationSource { get; private set; } = string.Empty;
+    private bool _isBundledActivation;
 
     public NativeWinGetHelper(WinGet manager)
     {
@@ -61,6 +62,7 @@ internal sealed class NativeWinGetHelper : IWinGetManagerHelper
                 factory.LibraryPath,
                 "Connected to WinGet API using bundled in-proc activation."
             );
+            _isBundledActivation = true;
             return true;
         }
         catch (WinGetComActivationException ex)
@@ -268,6 +270,12 @@ internal sealed class NativeWinGetHelper : IWinGetManagerHelper
 
     public IReadOnlyList<Package> GetAvailableUpdates_UnSafe()
     {
+        if (_isBundledActivation)
+        {
+            Logger.Info("WinGet is using bundled in-proc COM — falling back to CLI for update detection");
+            return new BundledWinGetHelper(Manager).GetAvailableUpdates_UnSafe();
+        }
+
         var logger = Manager.TaskLogger.CreateNew(LoggableTaskType.ListUpdates);
         List<Package> packages = [];
         foreach (
@@ -280,6 +288,14 @@ internal sealed class NativeWinGetHelper : IWinGetManagerHelper
             {
                 if (!nativePackage.IsUpdateAvailable)
                 {
+                    continue;
+                }
+
+                if (nativePackage.DefaultInstallVersion is null)
+                {
+                    Logger.Warn(
+                        $"WinGet package {nativePackage.Id} has IsUpdateAvailable=true but DefaultInstallVersion is null, skipping"
+                    );
                     continue;
                 }
 

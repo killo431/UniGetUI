@@ -7,6 +7,8 @@ using Avalonia.Platform;
 using Avalonia.Styling;
 using UniGetUI.Avalonia.Infrastructure;
 using UniGetUI.Avalonia.Views;
+using UniGetUI.Avalonia.Views.DialogPages;
+using UniGetUI.Core.Data;
 using UniGetUI.PackageEngine;
 using CoreSettings = global::UniGetUI.Core.SettingsEngine.Settings;
 
@@ -47,7 +49,14 @@ public partial class App : Application
             ApplyTheme(CoreSettings.GetValue(CoreSettings.K.PreferredTheme));
             var mainWindow = new MainWindow();
             desktop.MainWindow = mainWindow;
-            _ = Task.Run(PEInterface.LoadManagers);
+
+            if (CoreData.WasDaemon)
+            {
+                // Start silently: hide the window as soon as Avalonia opens it.
+                mainWindow.Opened += (_, _) => mainWindow.Hide();
+            }
+
+            _ = StartupAsync(mainWindow);
         }
 
         base.OnFrameworkInitializationCompleted();
@@ -78,6 +87,33 @@ public partial class App : Application
                 Environment.SetEnvironmentVariable("PATH", shellPath);
         }
         catch { /* keep the existing PATH if the shell can't be launched */ }
+    }
+
+    private static async Task StartupAsync(MainWindow mainWindow)
+    {
+        // Show crash report from the previous session and wait for the user
+        // to dismiss it before continuing with normal startup.
+        if (File.Exists(CrashHandler.PendingCrashFile))
+        {
+            try
+            {
+                string report = File.ReadAllText(CrashHandler.PendingCrashFile);
+                File.Delete(CrashHandler.PendingCrashFile);
+                // Yield once so the main window has time to open before
+                // ShowDialog tries to attach to it as owner.
+                await Task.Yield();
+
+                // ShowDialog requires a visible owner. In daemon mode the main window
+                // is hidden, so temporarily show it and re-hide after the dialog closes.
+                bool reshide = CoreData.WasDaemon;
+                if (reshide) mainWindow.Show();
+                await new CrashReportWindow(report).ShowDialog(mainWindow);
+                if (reshide) mainWindow.Hide();
+            }
+            catch { /* must not prevent normal startup */ }
+        }
+
+        await AvaloniaBootstrapper.InitializeAsync();
     }
 
     public static void ApplyTheme(string value)

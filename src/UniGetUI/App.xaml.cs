@@ -18,6 +18,7 @@ using UniGetUI.PackageEngine;
 using UniGetUI.PackageEngine.Classes.Manager.Classes;
 using UniGetUI.PackageEngine.Interfaces;
 using UniGetUI.Pages.DialogPages;
+using UniGetUI.Services;
 using Windows.ApplicationModel.Activation;
 using LaunchActivatedEventArgs = Microsoft.UI.Xaml.LaunchActivatedEventArgs;
 
@@ -184,7 +185,7 @@ namespace UniGetUI
                             "An interal error occurred. Please view the log for further details."
                         );
                         MainWindow.ErrorBanner.IsOpen = true;
-                        Button button = new() { Content = CoreTools.Translate("WingetUI Log") };
+                        Button button = new() { Content = CoreTools.Translate("UniGetUI Log") };
                         button.Click += (sender, args) =>
                             MainWindow.NavigationPage.UniGetUILogs_Click(sender, args);
                         MainWindow.ErrorBanner.ActionButton = button;
@@ -232,7 +233,7 @@ namespace UniGetUI
                                 "An interal error occurred. Please view the log for further details."
                             );
                             MainWindow.ErrorBanner.IsOpen = true;
-                            Button button = new() { Content = CoreTools.Translate("WingetUI Log") };
+                            Button button = new() { Content = CoreTools.Translate("UniGetUI Log") };
                             if (MainWindow.NavigationPage is not null)
                             { // MainWindow.NavigationPage could have not been loaded yet
                                 button.Click += (s, a) =>
@@ -331,6 +332,40 @@ namespace UniGetUI
 
                 // Create MainWindow
                 InitializeMainWindow();
+                if (!CoreData.WasDaemon)
+                    MainWindow.Activate();
+
+                // Show crash report from the previous session on top of the loading
+                // screen and wait for the user to dismiss it before continuing.
+                if (File.Exists(CrashHandler.PendingCrashFile))
+                {
+                    try
+                    {
+                        // In daemon mode the DWM/XAML threads are suspended; resume them
+                        // temporarily so the crash window can render, then re-suspend.
+                        bool resumedForCrash = CoreData.WasDaemon;
+                        if (resumedForCrash)
+                        {
+                            DWMThreadHelper.ChangeState_DWM(false);
+                            DWMThreadHelper.ChangeState_XAML(false);
+                        }
+
+                        string report = File.ReadAllText(CrashHandler.PendingCrashFile);
+                        File.Delete(CrashHandler.PendingCrashFile);
+                        var tcs = new TaskCompletionSource();
+                        var crashWindow = new CrashReportWindow(report);
+                        crashWindow.Closed += (_, _) => tcs.TrySetResult();
+                        crashWindow.Activate();
+                        await tcs.Task;
+
+                        if (resumedForCrash)
+                        {
+                            DWMThreadHelper.ChangeState_DWM(true);
+                            DWMThreadHelper.ChangeState_XAML(true);
+                        }
+                    }
+                    catch { /* must not prevent normal startup */ }
+                }
 
                 IEnumerable<Task> iniTasks =
                 [
@@ -346,6 +381,9 @@ namespace UniGetUI
                 await Task.WhenAll(iniTasks);
 
                 // Load non-essential components
+                TelemetryHandler.Configure(
+                    Secrets.GetOpenSearchUsername(),
+                    Secrets.GetOpenSearchPassword());
                 _ = TelemetryHandler.InitializeAsync();
                 _ = IconDatabase.Instance.LoadIconAndScreenshotsDatabaseAsync();
 
@@ -394,12 +432,6 @@ namespace UniGetUI
                     {
                         MainWindow?.NavigationPage?.NavigateTo(PageType.Updates);
                         MainWindow?.Activate();
-                    });
-
-                BackgroundApi.OnShowSharedPackage += (_, package) =>
-                    MainWindow.DispatcherQueue.TryEnqueue(() =>
-                    {
-                        DialogHelper.ShowSharedPackage_ThreadSafe(package.Key, package.Value);
                     });
 
                 BackgroundApi.OnUpgradeAll += (_, _) =>
@@ -489,7 +521,8 @@ namespace UniGetUI
 
         protected override void OnLaunched(LaunchActivatedEventArgs args)
         {
-            MainWindow?.Activate();
+            if (!CoreData.WasDaemon)
+                MainWindow?.Activate();
         }
 
         public async Task ShowMainWindowFromRedirectAsync(AppActivationArguments rawArgs)

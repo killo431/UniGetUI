@@ -7,6 +7,7 @@ using UniGetUI.Avalonia.Views;
 using UniGetUI.Core.Logging;
 using UniGetUI.Core.SettingsEngine;
 using UniGetUI.Core.Tools;
+using UniGetUI.Interface.Telemetry;
 using UniGetUI.PackageEngine.Classes.Manager.Classes;
 using UniGetUI.PackageEngine.Enums;
 using UniGetUI.PackageEngine.Interfaces;
@@ -26,7 +27,6 @@ public class InstalledPackagesPage : AbstractPackagesPage
     private MenuItem? _menuReinstall;
     private MenuItem? _menuUninstallThenReinstall;
     private MenuItem? _menuIgnoreUpdates;
-    private MenuItem? _menuShare;
     private MenuItem? _menuDetails;
     private MenuItem? _menuOpenInstallLocation;
     private MenuItem? _menuDownloadInstaller;
@@ -89,8 +89,6 @@ public class InstalledPackagesPage : AbstractPackagesPage
         ViewModel.AddToolbarSeparator();
         ViewModel.AddToolbarButton("info_round", CoreTools.Translate("Package details"),
             () => _ = ShowDetailsForPackage(SelectedItem), showLabel: false);
-        ViewModel.AddToolbarButton("share", CoreTools.Translate("Share"),
-            () => vm.RequestShareCommand.Execute(SelectedItem), showLabel: false);
         ViewModel.AddToolbarSeparator();
         ViewModel.AddToolbarButton("pin", CoreTools.Translate("Ignore selected packages"), async () =>
         {
@@ -187,13 +185,6 @@ public class InstalledPackagesPage : AbstractPackagesPage
         };
         _menuIgnoreUpdates.Click += (_, _) => _ = ToggleIgnoreUpdatesAsync(SelectedItem);
 
-        _menuShare = new MenuItem
-        {
-            Header = CoreTools.AutoTranslated("Share this package"),
-            Icon = LoadMenuIcon("share"),
-        };
-        _menuShare.Click += (_, _) => ViewModel.RequestShareCommand.Execute(SelectedItem);
-
         _menuDetails = new MenuItem
         {
             Header = CoreTools.AutoTranslated("Package details"),
@@ -218,7 +209,6 @@ public class InstalledPackagesPage : AbstractPackagesPage
         menu.Items.Add(new Separator());
         menu.Items.Add(_menuIgnoreUpdates);
         menu.Items.Add(new Separator());
-        menu.Items.Add(_menuShare);
         menu.Items.Add(_menuDetails);
 
         return menu;
@@ -229,7 +219,7 @@ public class InstalledPackagesPage : AbstractPackagesPage
         if (_menuAsAdmin is null || _menuInteractive is null || _menuRemoveData is null
             || _menuInstallationOptions is null || _menuReinstall is null
             || _menuUninstallThenReinstall is null || _menuIgnoreUpdates is null
-            || _menuShare is null || _menuDetails is null
+            || _menuDetails is null
             || _menuOpenInstallLocation is null || _menuDownloadInstaller is null)
         {
             Logger.Warn("Context menu items are null on InstalledPackagesPage");
@@ -246,7 +236,6 @@ public class InstalledPackagesPage : AbstractPackagesPage
         _menuInstallationOptions.IsEnabled = !isLocal;
         _menuReinstall.IsEnabled = !isLocal;
         _menuUninstallThenReinstall.IsEnabled = !isLocal;
-        _menuShare.IsEnabled = !isLocal;
         _menuDetails.IsEnabled = !isLocal;
         _menuOpenInstallLocation.IsEnabled =
             package.Manager.DetailsHelper.GetInstallLocation(package) is not null;
@@ -320,6 +309,8 @@ public class InstalledPackagesPage : AbstractPackagesPage
             var opts = await InstallOptionsFactory.LoadApplicableAsync(
                 pkg, elevated: elevated, interactive: interactive, remove_data: remove_data);
             var op = new UninstallPackageOperation(pkg, opts);
+            op.OperationSucceeded += (_, _) => TelemetryHandler.UninstallPackage(pkg, TEL_OP_RESULT.SUCCESS);
+            op.OperationFailed += (_, _) => TelemetryHandler.UninstallPackage(pkg, TEL_OP_RESULT.FAILED);
             AvaloniaOperationRegistry.Add(op);
             _ = op.MainThread();
         }
@@ -330,6 +321,8 @@ public class InstalledPackagesPage : AbstractPackagesPage
         if (package is null || package.Source.IsVirtualManager) return;
         var opts = await InstallOptionsFactory.LoadApplicableAsync(package);
         var op = new InstallPackageOperation(package, opts);
+        op.OperationSucceeded += (_, _) => TelemetryHandler.InstallPackage(package, TEL_OP_RESULT.SUCCESS, TEL_InstallReferral.ALREADY_INSTALLED);
+        op.OperationFailed += (_, _) => TelemetryHandler.InstallPackage(package, TEL_OP_RESULT.FAILED, TEL_InstallReferral.ALREADY_INSTALLED);
         AvaloniaOperationRegistry.Add(op);
         _ = op.MainThread();
     }
@@ -340,7 +333,11 @@ public class InstalledPackagesPage : AbstractPackagesPage
         var uninstallOpts = await InstallOptionsFactory.LoadApplicableAsync(package);
         var reinstallOpts = await InstallOptionsFactory.LoadApplicableAsync(package);
         var uninstallOp = new UninstallPackageOperation(package, uninstallOpts);
+        uninstallOp.OperationSucceeded += (_, _) => TelemetryHandler.UninstallPackage(package, TEL_OP_RESULT.SUCCESS);
+        uninstallOp.OperationFailed += (_, _) => TelemetryHandler.UninstallPackage(package, TEL_OP_RESULT.FAILED);
         var reinstallOp = new InstallPackageOperation(package, reinstallOpts, req: uninstallOp);
+        reinstallOp.OperationSucceeded += (_, _) => TelemetryHandler.InstallPackage(package, TEL_OP_RESULT.SUCCESS, TEL_InstallReferral.ALREADY_INSTALLED);
+        reinstallOp.OperationFailed += (_, _) => TelemetryHandler.InstallPackage(package, TEL_OP_RESULT.FAILED, TEL_InstallReferral.ALREADY_INSTALLED);
         AvaloniaOperationRegistry.Add(uninstallOp);
         AvaloniaOperationRegistry.Add(reinstallOp);
         _ = uninstallOp.MainThread();
@@ -351,11 +348,17 @@ public class InstalledPackagesPage : AbstractPackagesPage
     {
         if (package is null || package.Source.IsVirtualManager) return;
         if (await package.HasUpdatesIgnoredAsync())
+        {
             await package.RemoveFromIgnoredUpdatesAsync();
+            AccessibilityAnnouncementService.Announce(
+                CoreTools.Translate("Updates will no longer be ignored for {0}", package.Name));
+        }
         else
         {
             await package.AddToIgnoredUpdatesAsync();
             UpgradablePackagesLoader.Instance.Remove(package);
+            AccessibilityAnnouncementService.Announce(
+                CoreTools.Translate("Updates are now ignored for {0}", package.Name));
         }
     }
 

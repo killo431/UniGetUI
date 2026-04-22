@@ -1,9 +1,12 @@
+using System;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media;
+using Avalonia.Threading;
+using Avalonia.VisualTree;
 using UniGetUI.Avalonia.ViewModels;
 using UniGetUI.Avalonia.Views.Pages;
 using UniGetUI.Core.Logging;
@@ -32,6 +35,8 @@ public enum PageType
 
 public partial class MainWindow : Window
 {
+    private bool _focusSidebarSelectionOnNextPageChange;
+
     public enum RuntimeNotificationLevel
     {
         Progress,
@@ -51,6 +56,7 @@ public partial class MainWindow : Window
         SetupTitleBar();
 
         KeyDown += Window_KeyDown;
+        ViewModel.CurrentPageChanged += OnCurrentPageChanged;
     }
 
     private void Window_KeyDown(object? sender, KeyEventArgs e)
@@ -60,6 +66,7 @@ public partial class MainWindow : Window
 
         if (e.Key == Key.Tab && isCtrl)
         {
+            _focusSidebarSelectionOnNextPageChange = true;
             ViewModel.NavigateTo(isShift
                 ? MainWindowViewModel.GetPreviousPage(ViewModel.CurrentPage_t)
                 : MainWindowViewModel.GetNextPage(ViewModel.CurrentPage_t));
@@ -84,6 +91,38 @@ public partial class MainWindow : Window
         {
             (ViewModel.CurrentPageContent as IKeyboardShortcutListener)?.SelectAllTriggered();
         }
+        else if (isCtrl && !isShift && e.Key is Key.D1 or Key.D2 or Key.D3 or Key.D4 or Key.D5 or Key.D6)
+        {
+            _focusSidebarSelectionOnNextPageChange = true;
+            ViewModel.NavigateTo(e.Key switch
+            {
+                Key.D1 => PageType.Discover,
+                Key.D2 => PageType.Updates,
+                Key.D3 => PageType.Installed,
+                Key.D4 => PageType.Bundles,
+                Key.D5 => PageType.Settings,
+                _ => PageType.Managers,
+            });
+            e.Handled = true;
+        }
+        else if (isCtrl && !isShift && e.Key == Key.D)
+        {
+            (ViewModel.CurrentPageContent as IKeyboardShortcutListener)?.DetailsTriggered();
+            e.Handled = true;
+        }
+    }
+
+    private void OnCurrentPageChanged(object? sender, PageType pageType)
+    {
+        if (!_focusSidebarSelectionOnNextPageChange)
+            return;
+
+        _focusSidebarSelectionOnNextPageChange = false;
+        Dispatcher.UIThread.Post(() =>
+        {
+            var sidebar = this.GetVisualDescendants().OfType<SidebarView>().FirstOrDefault();
+            sidebar?.FocusSelectedItem();
+        }, DispatcherPriority.Background);
     }
 
     private void SetupTitleBar()
@@ -100,14 +139,15 @@ public partial class MainWindow : Window
         }
         else if (OperatingSystem.IsLinux())
         {
-            // Linux: remove the native title bar entirely; our toolbar is the
-            // only chrome. Custom min/max/close buttons appear on the right.
-            WindowDecorations = WindowDecorations.None;
+            // WSLg can report incorrect maximize/input bounds with frameless windows.
+            // Keep native decorations there and use the in-app toolbar only.
+            bool isWsl = IsRunningUnderWsl();
+            WindowDecorations = isWsl ? WindowDecorations.Full : WindowDecorations.None;
             TitleBarGrid.ClearValue(HeightProperty);
             TitleBarGrid.Height = 44;
             HamburgerPanel.Margin = new Thickness(10, 0, 8, 0);
             AvatarControl.Height = 32;
-            LinuxWindowButtons.IsVisible = true;
+            LinuxWindowButtons.IsVisible = !isWsl;
             MainContentGrid.Margin = new Thickness(0, 44, 0, 0);
             // Keep maximize icon in sync with window state
             this.GetObservable(WindowStateProperty).Subscribe(state =>
@@ -121,6 +161,13 @@ public partial class MainWindow : Window
                     CoreTools.Translate(state == WindowState.Maximized ? "Restore" : "Maximize"));
             });
         }
+    }
+
+    private static bool IsRunningUnderWsl()
+    {
+        string? wslDistro = Environment.GetEnvironmentVariable("WSL_DISTRO_NAME");
+        string? wslInterop = Environment.GetEnvironmentVariable("WSL_INTEROP");
+        return !string.IsNullOrWhiteSpace(wslDistro) || !string.IsNullOrWhiteSpace(wslInterop);
     }
 
     private void MinimizeButton_Click(object? sender, RoutedEventArgs e)
@@ -188,13 +235,6 @@ public partial class MainWindow : Window
     {
         (global::Avalonia.Application.Current?.ApplicationLifetime
             as IClassicDesktopStyleApplicationLifetime)?.Shutdown();
-    }
-
-    public void OpenSharedPackage(string managerName, string packageId)
-    {
-        // TODO: open package details for the shared package
-        Logger.Info($"OpenSharedPackage: {managerName}/{packageId}");
-        Navigate(PageType.Discover);
     }
 
     public static void ApplyProxyVariableToProcess()

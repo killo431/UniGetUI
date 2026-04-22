@@ -15,7 +15,10 @@ using UniGetUI.PackageEngine.Managers.PowerShellManager;
 using UniGetUI.PackageEngine.Managers.ScoopManager;
 using UniGetUI.PackageEngine.Managers.WingetManager;
 #else
+using UniGetUI.PackageEngine.Managers.AptManager;
+using UniGetUI.PackageEngine.Managers.DnfManager;
 using UniGetUI.PackageEngine.Managers.HomebrewManager;
+using UniGetUI.PackageEngine.Managers.PacmanManager;
 #endif
 
 namespace UniGetUI.PackageEngine
@@ -41,6 +44,9 @@ namespace UniGetUI.PackageEngine
         public static readonly Cargo Cargo = new();
         public static readonly Vcpkg Vcpkg = new();
 #if !WINDOWS
+        public static readonly Apt Apt = new();
+        public static readonly Dnf Dnf = new();
+        public static readonly Pacman Pacman = new();
         public static readonly Homebrew Homebrew = new();
 #endif
 
@@ -54,6 +60,18 @@ namespace UniGetUI.PackageEngine
             managers.Add(PowerShell);
 #else
             managers.Insert(0, Homebrew);
+            if (OperatingSystem.IsLinux())
+            {
+                var families = ReadLinuxDistroFamilies();
+                // If /etc/os-release is unreadable, include both as a safe fallback.
+                bool unknown = families.Count == 0;
+                if (unknown || families.Contains("debian") || families.Contains("ubuntu"))
+                    managers.Add(Apt);
+                if (unknown || families.Contains("fedora") || families.Contains("rhel") || families.Contains("centos"))
+                    managers.Add(Dnf);
+                if (unknown || families.Contains("arch"))
+                    managers.Add(Pacman);
+            }
 #endif
             return [.. managers];
         }
@@ -97,6 +115,28 @@ namespace UniGetUI.PackageEngine
                 Logger.Error(ex);
             }
         }
+
+#if !WINDOWS
+        [System.Runtime.Versioning.SupportedOSPlatform("linux")]
+        private static HashSet<string> ReadLinuxDistroFamilies()
+        {
+            var families = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            try
+            {
+                foreach (var line in File.ReadLines("/etc/os-release"))
+                {
+                    if (!line.StartsWith("ID=", StringComparison.Ordinal) &&
+                        !line.StartsWith("ID_LIKE=", StringComparison.Ordinal))
+                        continue;
+                    var value = line[(line.IndexOf('=') + 1)..].Trim('"');
+                    foreach (var token in value.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+                        families.Add(token);
+                }
+            }
+            catch { /* /etc/os-release not readable — caller will use fallback */ }
+            return families;
+        }
+#endif
     }
 
     public class PackageBundlesLoader_I : PackageBundlesLoader

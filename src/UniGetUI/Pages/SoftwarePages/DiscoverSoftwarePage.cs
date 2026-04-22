@@ -144,14 +144,6 @@ namespace UniGetUI.Interface.SoftwarePages
 
             menu.Items.Add(new MenuFlyoutSeparator { Height = 5 });
 
-            BetterMenuItem menuShare = new()
-            {
-                Text = CoreTools.AutoTranslated("Share this package"),
-                IconName = IconType.Share,
-            };
-            menuShare.Click += MenuShare_Invoked;
-            menu.Items.Add(menuShare);
-
             BetterMenuItem menuDetails = new()
             {
                 Text = CoreTools.AutoTranslated("Package details"),
@@ -189,7 +181,6 @@ namespace UniGetUI.Interface.SoftwarePages
             AppBarButton InstallationSettings = new();
 
             AppBarButton PackageDetails = new();
-            AppBarButton SharePackage = new();
 
             AppBarButton ExportSelection = new();
 
@@ -199,7 +190,6 @@ namespace UniGetUI.Interface.SoftwarePages
             ToolBar.PrimaryCommands.Add(InstallationSettings);
             ToolBar.PrimaryCommands.Add(new AppBarSeparator());
             ToolBar.PrimaryCommands.Add(PackageDetails);
-            ToolBar.PrimaryCommands.Add(SharePackage);
             ToolBar.PrimaryCommands.Add(new AppBarSeparator());
             ToolBar.PrimaryCommands.Add(ExportSelection);
             ToolBar.PrimaryCommands.Add(new AppBarSeparator());
@@ -214,7 +204,6 @@ namespace UniGetUI.Interface.SoftwarePages
                 { DownloadInstallers, CoreTools.Translate("Download selected installers") },
                 { InstallationSettings, CoreTools.Translate("Install options") },
                 { PackageDetails, " " + CoreTools.Translate("Package details") },
-                { SharePackage, " " + CoreTools.Translate("Share") },
                 { ExportSelection, CoreTools.Translate("Add selection to bundle") },
                 { HelpButton, CoreTools.Translate("Help") },
             };
@@ -227,7 +216,6 @@ namespace UniGetUI.Interface.SoftwarePages
                 { DownloadInstallers, IconType.Download },
                 { InstallInteractive, IconType.Interactive },
                 { PackageDetails, IconType.Info_Round },
-                { SharePackage, IconType.Share },
                 { ExportSelection, IconType.AddTo },
                 { HelpButton, IconType.Help },
             };
@@ -270,7 +258,6 @@ namespace UniGetUI.Interface.SoftwarePages
                     TEL_InstallReferral.DIRECT_SEARCH
                 );
 
-            SharePackage.Click += (_, _) => DialogHelper.SharePackage(SelectedItem);
         }
 
         public override async Task LoadPackages()
@@ -332,14 +319,6 @@ namespace UniGetUI.Interface.SoftwarePages
         private void MenuDetails_Invoked(object sender, RoutedEventArgs e)
         {
             ShowDetailsForPackage(SelectedItem, TEL_InstallReferral.DIRECT_SEARCH);
-        }
-
-        private void MenuShare_Invoked(object sender, RoutedEventArgs e)
-        {
-            if (SelectedItem is null)
-                return;
-
-            DialogHelper.SharePackage(SelectedItem);
         }
 
         private void MenuInstall_Invoked(object sender, RoutedEventArgs e) =>

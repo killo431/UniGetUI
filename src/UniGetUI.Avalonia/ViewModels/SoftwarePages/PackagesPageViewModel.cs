@@ -3,6 +3,7 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Globalization;
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Collections;
 using Avalonia.Controls;
 using Avalonia.Layout;
@@ -15,6 +16,7 @@ using UniGetUI.Avalonia.ViewModels;
 using UniGetUI.Avalonia.Views.Controls;
 using UniGetUI.Core.SettingsEngine;
 using UniGetUI.Core.Tools;
+using UniGetUI.Interface.Telemetry;
 using UniGetUI.PackageEngine.Enums;
 using UniGetUI.PackageEngine.Interfaces;
 using UniGetUI.PackageEngine.Operations;
@@ -123,6 +125,7 @@ public partial class PackagesPageViewModel : ViewModelBase
     [ObservableProperty] private string _globalQueryText = "";
     [ObservableProperty] private bool _newVersionHeaderVisible;
     [ObservableProperty] private bool _reloadButtonVisible;
+    [ObservableProperty] private string _reloadButtonTooltip = "";
     [ObservableProperty] private bool _isFilterPaneOpen;
     [ObservableProperty] private PackageViewMode _viewMode;
     [ObservableProperty] private int _sortFieldIndex;
@@ -165,11 +168,6 @@ public partial class PackagesPageViewModel : ViewModelBase
     public event Action? HelpRequested;
     /// <summary>Fired when the ViewModel wants to show the Manage-Ignored-Updates dialog.</summary>
     public event Action? ManageIgnoredRequested;
-    /// <summary>
-    /// Fired when the ViewModel has built a share URL.
-    /// Arguments: (packageName, url). Both null means "nothing to share".
-    /// </summary>
-    public event Action<string?, string?>? SharePackageRequested;
 
     // ─── Constructor ─────────────────────────────────────────────────────────
     public PackagesPageViewModel(PackagesPageData data)
@@ -259,6 +257,7 @@ public partial class PackagesPageViewModel : ViewModelBase
             Content = content,
         };
         ToolTip.SetTip(btn, label);
+        AutomationProperties.SetName(btn, label);
         btn.Click += (_, _) => onClick();
         ToolBarItems.Add(btn);
         return btn;
@@ -267,14 +266,16 @@ public partial class PackagesPageViewModel : ViewModelBase
     /// <summary>Adds a thin vertical separator to the toolbar.</summary>
     public void AddToolbarSeparator()
     {
-        ToolBarItems.Add(new Separator
+        var sep = new Separator
         {
             Width = 1,
             Height = 30,
             Margin = new Thickness(4, 4),
             Background = Application.Current?.FindResource("AppBorderBrush") as IBrush
                          ?? new SolidColorBrush(Color.FromArgb(60, 255, 255, 255)),
-        });
+        };
+        AutomationProperties.SetAccessibilityView(sep, AccessibilityView.Raw);
+        ToolBarItems.Add(sep);
     }
 
     public async Task ShowInfoDialog(Window owner, string title, string message)
@@ -374,6 +375,7 @@ public partial class PackagesPageViewModel : ViewModelBase
         }
         IsLoading = false;
         _lastLoadTime = DateTime.Now;
+        ReloadButtonTooltip = CoreTools.Translate("Last checked: {0}", _lastLoadTime.ToString(CultureInfo.CurrentCulture));
         FilterPackages();
         PackagesLoaded?.Invoke(ReloadReason.External);
     }
@@ -712,22 +714,6 @@ public partial class PackagesPageViewModel : ViewModelBase
     [RelayCommand] private void RequestHelp() => HelpRequested?.Invoke();
     [RelayCommand] private void RequestManageIgnored() => ManageIgnoredRequested?.Invoke();
 
-    [RelayCommand]
-    public void RequestShare(IPackage? package)
-    {
-        if (package is null || package.Source.IsVirtualManager)
-        {
-            SharePackageRequested?.Invoke(null, null);
-            return;
-        }
-        var url = "https://marticliment.com/unigetui/share?"
-            + "name=" + System.Web.HttpUtility.UrlEncode(package.Name)
-            + "&id=" + System.Web.HttpUtility.UrlEncode(package.Id)
-            + "&sourceName=" + System.Web.HttpUtility.UrlEncode(package.Source.Name)
-            + "&managerName=" + System.Web.HttpUtility.UrlEncode(package.Manager.Name);
-        SharePackageRequested?.Invoke(package.Name, url);
-    }
-
     // ─── Sort commands ────────────────────────────────────────────────────────
     [RelayCommand] private void SortByName() => SortFieldIndex = 0;
     [RelayCommand] private void SortById() => SortFieldIndex = 1;
@@ -758,11 +744,15 @@ public partial class PackagesPageViewModel : ViewModelBase
         {
             AllPackagesChecked = true;
             FilteredPackages.SelectAll();
+            AccessibilityAnnouncementService.Announce(
+                CoreTools.Translate("All packages selected"));
         }
         else
         {
             AllPackagesChecked = false;
             FilteredPackages.ClearSelection();
+            AccessibilityAnnouncementService.Announce(
+                CoreTools.Translate("Package selection cleared"));
         }
     }
 
@@ -784,6 +774,8 @@ public partial class PackagesPageViewModel : ViewModelBase
             var opts = await InstallOptionsFactory.LoadApplicableAsync(
                 pkg, elevated: elevated, interactive: interactive, no_integrity: no_integrity);
             var op = new InstallPackageOperation(pkg, opts);
+            op.OperationSucceeded += (_, _) => TelemetryHandler.InstallPackage(pkg, TEL_OP_RESULT.SUCCESS, TEL_InstallReferral.DIRECT_SEARCH);
+            op.OperationFailed += (_, _) => TelemetryHandler.InstallPackage(pkg, TEL_OP_RESULT.FAILED, TEL_InstallReferral.DIRECT_SEARCH);
             AvaloniaOperationRegistry.Add(op);
             _ = op.MainThread();
         }

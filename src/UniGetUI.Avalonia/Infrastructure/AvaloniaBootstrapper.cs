@@ -53,6 +53,9 @@ internal static class AvaloniaBootstrapper
                 CancellationToken.None,
                 TaskContinuationOptions.OnlyOnFaulted,
                 TaskScheduler.Default);
+        TelemetryHandler.Configure(
+            Secrets.GetOpenSearchUsername(),
+            Secrets.GetOpenSearchPassword());
         _ = TelemetryHandler.InitializeAsync()
             .ContinueWith(
                 t => Logger.Error(t.Exception!),
@@ -82,7 +85,7 @@ internal static class AvaloniaBootstrapper
 
     private static async Task InitializePackageEngineAsync()
     {
-        await Task.Run(PEInterface.LoadLoaders);
+        // LoadLoaders is called synchronously in App.axaml.cs before MainWindow creation
         await Task.Run(PEInterface.LoadManagers);
     }
 
@@ -103,14 +106,6 @@ internal static class AvaloniaBootstrapper
                 {
                     MainWindow.Instance?.Navigate(PageType.Updates);
                     MainWindow.Instance?.ShowFromTray();
-                });
-
-            _backgroundApi.OnShowSharedPackage += (_, pkg) =>
-                Dispatcher.UIThread.Post(() =>
-                {
-                    Logger.Info($"BackgroundApi: ShowSharedPackage {pkg.Key}/{pkg.Value}");
-                    MainWindow.Instance?.ShowFromTray();
-                    MainWindow.Instance?.OpenSharedPackage(pkg.Key, pkg.Value);
                 });
 
             _backgroundApi.OnUpgradeAll += (_, _) =>
@@ -145,6 +140,12 @@ internal static class AvaloniaBootstrapper
                 return;
             }
 
+            if (OperatingSystem.IsLinux())
+            {
+                await LoadLinuxElevatorAsync();
+                return;
+            }
+
             if (SecureSettings.Get(SecureSettings.K.ForceUserGSudo))
             {
                 var res = await CoreTools.WhichAsync("gsudo.exe");
@@ -174,6 +175,72 @@ internal static class AvaloniaBootstrapper
             Logger.Error("Elevator/GSudo failed to be loaded!");
             Logger.Error(ex);
         }
+    }
+
+    [System.Runtime.Versioning.SupportedOSPlatform("linux")]
+    private static async Task LoadLinuxElevatorAsync()
+    {
+        // Prefer sudo over pkexec: sudo caches credentials on disk (per user, not per
+        // process), so the user is only prompted once per ~15-minute window regardless
+        // of how many packages are installed. pkexec prompts on every single invocation
+        // because polkit ties its authorization cache to the calling process PID.
+        var results = await Task.WhenAll(
+            CoreTools.WhichAsync("sudo"),
+            CoreTools.WhichAsync("pkexec"),
+            CoreTools.WhichAsync("zenity"));
+        var (sudoFound, sudoPath) = results[0];
+        var (pkexecFound, pkexecPath) = results[1];
+        var (zenityFound, zenityPath) = results[2];
+
+        if (sudoFound)
+        {
+            // Find a graphical askpass helper so sudo can prompt without a terminal.
+            // Most DEs (KDE, XFCE, ...) pre-set SSH_ASKPASS to their native tool;
+            // GNOME doesn't, so we fall back to zenity with a small wrapper script
+            // (zenity --password ignores positional args, so it needs the wrapper
+            // to forward the prompt text via --text="$1").
+            string? askpass = null;
+            var envAskpass = Environment.GetEnvironmentVariable("SSH_ASKPASS");
+            if (!string.IsNullOrEmpty(envAskpass) && File.Exists(envAskpass))
+                askpass = envAskpass;
+            else if (zenityFound)
+            {
+                askpass = Path.Join(CoreData.UniGetUIDataDirectory, "linux-askpass.sh");
+                await File.WriteAllTextAsync(askpass,
+                    $"#!/bin/sh\n\"{zenityPath}\" --password --title=\"UniGetUI\" --text=\"$1\"\n");
+                File.SetUnixFileMode(askpass,
+                    UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |
+                    UnixFileMode.GroupRead | UnixFileMode.GroupExecute |
+                    UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
+            }
+
+            if (askpass != null)
+            {
+                Environment.SetEnvironmentVariable("SUDO_ASKPASS", askpass);
+                CoreData.ElevatorPath = sudoPath;
+                CoreData.ElevatorArgs = "-A";
+                Logger.Debug($"Using sudo -A with askpass '{askpass}'");
+                return;
+            }
+        }
+
+        // Fall back to pkexec when no usable sudo+askpass combination is found.
+        // pkexec handles its own graphical prompt via polkit but prompts every invocation.
+        if (pkexecFound)
+        {
+            CoreData.ElevatorPath = pkexecPath;
+            Logger.Warn($"Using pkexec at {pkexecPath} (prompts on every operation)");
+            return;
+        }
+
+        if (sudoFound)
+        {
+            CoreData.ElevatorPath = sudoPath;
+            Logger.Warn($"Falling back to sudo without graphical askpass at {sudoPath}");
+            return;
+        }
+
+        Logger.Warn("No elevation tool found (pkexec/sudo). Admin operations will fail.");
     }
 
     /// <summary>
