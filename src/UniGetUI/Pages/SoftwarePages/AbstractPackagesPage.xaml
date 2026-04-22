@@ -1229,6 +1229,7 @@
           <Grid.RowDefinitions>
             <RowDefinition Height="*" />
             <RowDefinition Height="64" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
           </Grid.RowDefinitions>
           <Grid.ColumnDefinitions>
@@ -1267,6 +1268,17 @@
               </AnimatedIcon.FallbackIconSource>
             </AnimatedIcon>
           </Button>
+          <HyperlinkButton
+            x:Name="ShowPopularPackagesButton"
+            Grid.Row="2"
+            Grid.Column="1"
+            Grid.ColumnSpan="2"
+            Margin="0,8,0,0"
+            HorizontalAlignment="Center"
+            x:FieldModifier="protected"
+          >
+            <widgets:TranslatedTextBlock Text="View popular packages" />
+          </HyperlinkButton>
         </Grid>
       </Grid>
     </SplitView>

@@ -207,6 +207,11 @@ public static class TelemetryHandler
     public static void PackageDetails(IPackage package, string eventSource) =>
         _ = TrackPackageEventAsync(package, "details", eventSource: eventSource);
 
+    public static void SharedPackage(IPackage package, string eventSource) =>
+        _ = TrackPackageEventAsync(package, "share", eventSource: eventSource);
+
+    public static void ViewPackageRankings() => _ = TrackBundleEventAsync("rankings", "view");
+
     private static async Task TrackPackageEventAsync(
         IPackage package,
         string operation,

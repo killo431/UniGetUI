@@ -78,6 +78,12 @@ namespace UniGetUI.PackageEngine.PackageClasses
         public virtual bool IsUpgradable { get; }
 
         /// <summary>
+        /// Returns the download count for this package as reported by the statistics server.
+        /// Returns -1 if the download count is not available.
+        /// </summary>
+        public long Downloads => PackageCacher.GetDownloadCount(this);
+
+        /// <summary>
         /// Construct a package with a given name, id, version, source and manager, and an optional scope.
         /// </summary>
         public Package(

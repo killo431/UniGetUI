@@ -63,4 +63,8 @@
         <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
         <NoWarn>$(NoWarn);EnableGenerateDocumentationFile</NoWarn>
     </PropertyGroup>
+
+    <PropertyGroup>
+        <EnablePackageRankings Condition="'$(EnablePackageRankings)' == ''">true</EnablePackageRankings>
+    </PropertyGroup>
 </Project>

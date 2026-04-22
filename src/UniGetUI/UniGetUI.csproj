@@ -255,6 +255,9 @@
         <Page Update="Pages\DialogPages\OperationLiveLogPage.xaml">
             <Generator>MSBuild:Compile</Generator>
         </Page>
+        <Page Update="Controls\PackageRanking.xaml">
+            <Generator>MSBuild:Compile</Generator>
+        </Page>
         <Page Update="Pages\SettingsPages\GeneralPages\PackageManager.xaml">
             <Generator>MSBuild:Compile</Generator>
         </Page>

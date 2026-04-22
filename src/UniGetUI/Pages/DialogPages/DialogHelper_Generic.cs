@@ -353,6 +353,15 @@ public static partial class DialogHelper
         await ShowDialogAsync(AboutDialog);
     }
 
+    public static async Task ShowPackageRankings()
+    {
+        ContentDialog dialog = DialogFactory.Create_AsWindow(true);
+        dialog.Title = CoreTools.Translate("Popular packages");
+        dialog.CloseButtonText = CoreTools.Translate("Close");
+        dialog.Content = new UniGetUI.Controls.PackageRanking();
+        await ShowDialogAsync(dialog);
+    }
+
     public static async Task ShowReleaseNotes()
     {
         ContentDialog NotesDialog = DialogFactory.Create_AsWindow(true);
