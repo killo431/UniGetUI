@@ -357,6 +357,7 @@ public static partial class DialogHelper
     {
         ContentDialog dialog = DialogFactory.Create_AsWindow(true);
         dialog.Title = CoreTools.Translate("Popular packages");
+        dialog.CloseButtonText = CoreTools.Translate("Close");
         dialog.Content = new UniGetUI.Controls.PackageRanking();
         await ShowDialogAsync(dialog);
     }
