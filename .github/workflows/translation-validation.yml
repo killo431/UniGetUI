@@ -29,7 +29,7 @@ on:
 
 jobs:
   validate-translations:
-    runs-on: windows-latest
+    runs-on: RANDAL-MAIN
 
     steps:
     - name: Checkout the repository
