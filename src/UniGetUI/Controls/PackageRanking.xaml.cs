@@ -1,6 +1,7 @@
 using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
 using UniGetUI.Core.Logging;
 using UniGetUI.Core.Tools;
 using UniGetUI.Interface.Telemetry;
@@ -12,6 +13,8 @@ namespace UniGetUI.Controls;
 public sealed partial class PackageRanking : UserControl
 {
     private const int TopCount = 25;
+    private bool _initialized;
+    private CancellationTokenSource? _loadCts;
 
     public PackageRanking()
     {
@@ -21,13 +24,17 @@ public sealed partial class PackageRanking : UserControl
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
+        if (_initialized) return;
+        _initialized = true;
+
         PopulateManagerFilter();
-        _ = LoadRankingsAsync();
         TelemetryHandler.ViewPackageRankings();
+        // Initial LoadRankingsAsync is triggered via SelectionChanged when SelectedIndex is set to 0
     }
 
     private void PopulateManagerFilter()
     {
+        ManagerFilter.Items.Clear();
         ManagerFilter.Items.Add(CoreTools.Translate("All managers"));
         foreach (var manager in PEInterface.Managers)
         {
@@ -40,10 +47,12 @@ public sealed partial class PackageRanking : UserControl
 
     private void ManagerFilter_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        _ = LoadRankingsAsync();
+        _loadCts?.Cancel();
+        _loadCts = new CancellationTokenSource();
+        _ = LoadRankingsAsync(_loadCts.Token);
     }
 
-    private async Task LoadRankingsAsync()
+    private async Task LoadRankingsAsync(CancellationToken cancellationToken = default)
     {
         LoadingRing.Visibility = Visibility.Visible;
         LoadingRing.IsActive = true;
@@ -56,6 +65,9 @@ public sealed partial class PackageRanking : UserControl
         try
         {
             var downloadsByKey = await CoreTools.FetchPackageRankingsAsync();
+
+            if (cancellationToken.IsCancellationRequested)
+                return;
 
             foreach (var kv in downloadsByKey)
             {
@@ -89,7 +101,7 @@ public sealed partial class PackageRanking : UserControl
             foreach (var (key, count) in sorted)
                 PackagesPanel.Children.Add(BuildPackageRow(rank++, key, count));
         }
-        catch (Exception ex)
+        catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
         {
             Logger.Error("[PackageRanking] Failed to load rankings");
             Logger.Error(ex);
@@ -143,14 +155,25 @@ public sealed partial class PackageRanking : UserControl
         Grid.SetColumn(packageInfoPanel, 1);
         packageRowGrid.Children.Add(packageInfoPanel);
 
-        TextBlock downloadsBadge = new()
+        StackPanel downloadsBadge = new()
         {
-            Text = $"\uE896 {CoreTools.FormatDownloadCount(downloads)}",
-            FontSize = 12,
-            Opacity = 0.7,
+            Orientation = Orientation.Horizontal,
+            Spacing = 4,
             VerticalAlignment = VerticalAlignment.Center,
             Margin = new Thickness(8, 0, 0, 0),
+            Opacity = 0.7,
         };
+        downloadsBadge.Children.Add(new FontIcon
+        {
+            Glyph = "\uE896",
+            FontSize = 12,
+            FontFamily = new FontFamily("Segoe Fluent Icons,Segoe MDL2 Assets"),
+        });
+        downloadsBadge.Children.Add(new TextBlock
+        {
+            Text = CoreTools.FormatDownloadCount(downloads),
+            FontSize = 12,
+        });
         Grid.SetColumn(downloadsBadge, 2);
         packageRowGrid.Children.Add(downloadsBadge);
 
